@@ -3,7 +3,7 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++17
 
 # Список исходных файлов
-SRCS = server.cpp
+SRCS = client.cpp
 
 # Генерация имен объектных файлов на основе исходных файлов
 OBJS = $(SRCS:.cpp=.o)
