@@ -11,12 +11,45 @@
 #define SERVER_IP "127.0.0.1"
 #define PORT 7300
 #define BUFFER_SIZE 1024
+#define MAX_EVENTS 5
+
+void epoll_loop(int epoll_fd, int sock)
+{
+    struct epoll_event events[MAX_EVENTS];
+    char buffer[BUFFER_SIZE] = {0};
+    int bytes_received = 0;
+    int remaining_bytes = 0;
+    while(1)
+    {
+        int num_events = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        if (num_events == -1) {
+            perror("epoll_wait");
+        }
+
+        for(int i = 0; i < num_events; i++)
+        {
+            if (events[i].data.fd == sock) {
+                ssize_t bytes = recv(sock, buffer, BUFFER_SIZE, 0);
+                if (bytes == -1) {
+                    perror("recv");
+                    // Handle error
+                } else if (bytes == 0) {
+                    // Connection closed
+                    // close(epoll_fd);
+                    // close(sockfd);
+                } else {
+                    std::cout << std::string(buffer) << std::endl;
+                }
+            }
+        }
+    }
+}
 
 int main()
 {
     int sock = 0;
     struct sockaddr_in serv_addr;
-    char buffer[BUFFER_SIZE] = {0};
+
     if((sock = socket(PF_INET, SOCK_STREAM, 0)) < 0 )
     {
         throw std::runtime_error("socket");
@@ -36,9 +69,25 @@ int main()
         return 1;
     }
 
+    int epoll_fd = epoll_create1(0);
+    if(epoll_fd == -1)
+    {
+        throw std::runtime_error("epoll_fd");
+    }
+    
+    struct epoll_event event;
+    event.events = EPOLLIN;
+    event.data.fd = sock;
+
+    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event) == -1)
+    {
+        throw std::runtime_error("epoll_ctl == -1");
+    }
+    
+    std::future<void> f1 = std::async([epoll_fd, sock]{epoll_loop(epoll_fd, sock);});
+    f1.get();
     // recv(sock, buffer, BUFFER_SIZE, 0);
-    strcpy(buffer,"Hello from client!!!!");
-    send(sock, buffer, strlen(buffer), 0);
-    std::cout << std::string(buffer) << std::endl;
+    // read(sock, buffer, BUFFER_SIZE);
+    // std::cout << std::string(buffer) << std::endl;
 
 }

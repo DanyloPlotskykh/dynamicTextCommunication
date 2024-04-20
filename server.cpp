@@ -50,6 +50,12 @@ int main(int args, char **argv)
     if ((new_socket = accept(fd, (struct sockaddr *)&address, (socklen_t*)&len)) < 0) {
         throw std::runtime_error("accept");
     }
-    std::future<void> f = std::async([new_socket]{handle_read((void *)&new_socket);});
+    //std::future<void> f = std::async([new_socket]{handle_read((void *)&new_socket);});
+    strcpy(buffer,"Hello from server!!!");
+    int bytes_sent = send(new_socket, buffer, strlen(buffer), 0);
+    if (bytes_sent < 0) {
+        perror("send failed");
+    }
+    else{std::cout << "data was sended" << std::endl;}
     std::cout << "All good yet" << std::endl;
 }
