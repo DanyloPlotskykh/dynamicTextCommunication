@@ -9,7 +9,7 @@
 #include <sys/epoll.h>
 
 #define SERVER_IP "127.0.0.1"
-#define PORT 7300
+#define PORT 7301
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 5
 
@@ -38,10 +38,28 @@ void epoll_loop(int epoll_fd, int sock)
                     // close(epoll_fd);
                     // close(sockfd);
                 } else {
-                    std::cout << std::string(buffer) << std::endl;
+                    std::cout << std::string(buffer, bytes) << std::endl;
                 }
             }
         }
+    }
+}
+
+void handler_write(int sock)
+{
+    while(1)
+    {
+        std::string line;
+        std::getline(std::cin, line);
+        auto cline = line.c_str(); // Получаем указатель на строку
+        int len = strlen(cline); // Получаем длину строки
+        int bytes_sent = send(sock, cline, len, 0); // Отправляем данные
+        if(bytes_sent < 0)
+        {
+            std::cout << "line does not sent (handler_write)" << std::endl;
+        }
+        // Очищаем буфер после отправки данных
+        line.clear();
     }
 }
 
@@ -78,16 +96,14 @@ int main()
     struct epoll_event event;
     event.events = EPOLLIN;
     event.data.fd = sock;
-
+    std::cout << "before before" << std::endl;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event) == -1)
     {
         throw std::runtime_error("epoll_ctl == -1");
     }
-    
+    std::cout << "before" << std::endl;
     std::future<void> f1 = std::async([epoll_fd, sock]{epoll_loop(epoll_fd, sock);});
+    std::future<void> f2 = std::async([sock]{handler_write(sock);});
     f1.get();
-    // recv(sock, buffer, BUFFER_SIZE, 0);
-    // read(sock, buffer, BUFFER_SIZE);
-    // std::cout << std::string(buffer) << std::endl;
-
+    f2.get();
 }
