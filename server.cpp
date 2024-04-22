@@ -23,7 +23,8 @@ class Server
 {
 public:
     Server(const int port, const int buffer_size);
-    int bind_to_port(); 
+    void create_socket();
+    void bind_to_port(); 
 
     int listen_client() const;
 
@@ -52,6 +53,11 @@ Server::Server(const int port, const int buffer_size) : m_port{port},
                                                         m_buffer_size{buffer_size},
                                                         stop{false}
 {
+    
+}
+
+void Server::create_socket()
+{
     m_server_socket = socket(PF_INET, SOCK_STREAM, 0);
     if(m_server_socket == -1)
     {
@@ -71,10 +77,17 @@ Server::Server(const int port, const int buffer_size) : m_port{port},
     m_event.data.fd = m_server_socket;
 }
 
-int Server::bind_to_port()
+void Server::bind_to_port()
 {
     m_address.sin_port = htons(m_port);
-    return bind(m_server_socket, reinterpret_cast<struct sockaddr *>(&m_address), sizeof(m_address));
+    std::cout << "BIND --------- " << std::endl;
+    std::cout << m_server_socket << std::endl;
+    std::cout << m_port << std::endl;
+    std::cout << "BIND --------- " << std::endl;
+    if(bind(m_server_socket, reinterpret_cast<struct sockaddr *>(&m_address), sizeof(m_address)))
+    {
+        perror("bind");
+    }
 }
 
 int Server::get_port()
@@ -157,10 +170,10 @@ void Server::handle_events()
                 m_fd_map[M_CLIENT_SOCKET::FIRST] = -1;
                 m_port = newPort;
                 std::string new_port_message = "newport-" +  std::to_string(m_port); 
-                send(m_fd_map[M_CLIENT_SOCKET::FIRST], new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
+                send(client_socket, new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
                 epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_server_socket, nullptr); // Удаляем серверный сокет из epoll
-                close(client_socket);
-                return; 
+                close(m_server_socket);
+                break; 
             }
             if (bytes_received == -1) {
                 perror("recv");
@@ -172,6 +185,7 @@ void Server::handle_events()
                 std::cout << "Received data from client: " << std::string(buffer, bytes_received) << std::endl;
             }
         }
+        
     }
 }
 
@@ -243,10 +257,8 @@ int main()
     
     for(;;)
     {   
-        if(s->bind_to_port() == -1)
-        {
-            std::cout << "bind()" << std::endl;
-        }
+        s->create_socket();
+        s->bind_to_port();
         std::cout << "PORT -> " << s->get_port() << std::endl;
         if(s->listen_client() < 0)
         {
