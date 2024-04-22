@@ -21,8 +21,9 @@ class Client
 {
 public:
     Client(std::string addr, int port);
+    void create_socket();
     void bind();
-    void connect_to_server();
+    bool connect_to_server();
     void handle_events();
     void handle_write();
 
@@ -38,6 +39,10 @@ private:
 
 Client::Client(std::string addr, int port) : m_addr(std::move(addr)),
                                                m_port(std::move(port))
+{
+}
+
+void Client::create_socket()
 {
     m_sock = socket(PF_INET, SOCK_STREAM, 0);
     if(m_sock < 0)
@@ -65,7 +70,7 @@ void Client::bind()
     }
 }
 
-void Client::connect_to_server()
+bool Client::connect_to_server()
 {
     // if (m_sock != 0) {
     //     close(m_sock); // Закрыть предыдущее соединение
@@ -80,8 +85,10 @@ void Client::connect_to_server()
     // m_serv_addr.sin_port = htons(m_port);
 
     if (connect(m_sock, (struct sockaddr *)&m_serv_addr, sizeof(m_serv_addr)) < 0) {
-        std::cerr << "Connection Failed" << std::endl;
+        perror("connect");
+        return -1;
     }
+    return true;
 }
 
 void Client::handle_events()
@@ -92,13 +99,11 @@ void Client::handle_events()
     int remaining_bytes = 0;
     for(;;)
     {
-        std::cout << "wait" << std::endl;
         int num_events = epoll_wait(m_epollfd, &events, 1, -1);
         if(num_events == -1)
         {
             perror("epoll_wait");
         }
-        std::cout << "after wait" << std::endl;
         if(events.data.fd == m_sock)
         {
             ssize_t bytes = recv(m_sock, buffer, BUFFER_SIZE, 0);
@@ -116,7 +121,10 @@ void Client::handle_events()
                 if(parse_message(std::string(buffer, bytes), port))
                 {
                     m_port = port;
-                    return;
+                    epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_sock, nullptr);
+                    close(m_epollfd);
+                    close(m_sock);
+                    break;
                 }
                 else
                 {
@@ -150,6 +158,7 @@ void Client::handle_write()
             {
                 std::cout << "line does not sent (handler_write)" << std::endl;
             }
+            break;
             return;
         }
         int bytes_sent = send(m_sock, cline, len, 0); // Отправляем данные
@@ -166,6 +175,7 @@ bool Client::parse_message(std::string message, int& intPort)
     //port for change
     std::string port;
     //remove spaces
+    std::cout << "message before parse -- " << message << std::endl;
     message.erase(std::remove(message.begin(), message.end(), ' '), message.end());
     //to lower case
     std::transform(message.begin(), message.end(), message.begin(), [](unsigned char c) {
@@ -197,8 +207,12 @@ int main()
     Client *cl = new Client(ADDR, PORT);
     for(;;)
     {
+        cl->create_socket();
         cl->bind();
-        cl->connect_to_server();
+        if(!cl->connect_to_server())
+        {
+            break;
+        }
         std::future<void> f1 = std::async([cl]{cl->handle_events();});
         std::future<void> f2 =  std::async([cl]{cl->handle_write();});
         f1.get();
