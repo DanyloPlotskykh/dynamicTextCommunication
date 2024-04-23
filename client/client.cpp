@@ -11,6 +11,7 @@
 #include <string>
 #include <algorithm>
 #include <thread>
+#include <random>
 
 std::string ADDR = "127.0.0.1";
 int PORT = 7302;
@@ -22,14 +23,18 @@ class Client
 public:
     Client(std::string addr, int port);
     void create_socket();
-    void bind();
+    void bind_to_server();
     bool connect_to_server();
-    void handle_events();
-    void handle_write();
+    void handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
+    void handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change);
+
+    friend void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
 
 private:
+    
     bool parse_message(std::string message, int& intPort);
-
+    bool isPortAvailable(int port);
+    int generate_random_port();
 private:
     const std::string m_addr;
     int m_port, m_epollfd, m_sock = 0;
@@ -44,6 +49,10 @@ Client::Client(std::string addr, int port) : m_addr(std::move(addr)),
 
 void Client::create_socket()
 {
+    if(m_sock != 0)
+    {
+        close(m_sock);
+    }
     m_sock = socket(PF_INET, SOCK_STREAM, 0);
     if(m_sock < 0)
     {
@@ -60,45 +69,60 @@ void Client::create_socket()
     }
 }
 
-void Client::bind()
+void Client::bind_to_server()
 {
     m_serv_addr.sin_family = AF_INET;
-    m_serv_addr.sin_port = htons(m_port); // Установка порта
+    m_serv_addr.sin_port = htons(m_port);
 
     if (inet_pton(PF_INET, m_addr.c_str(), &m_serv_addr.sin_addr) <= 0) {
         std::cerr << "Invalid address/ Address not supported" << std::endl;
     }
 }
 
+bool Client::isPortAvailable(int port) {
+    int sockfd = socket(PF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        return false;
+    }
+
+    sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sockfd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) == -1) {
+        std::cerr << "Порт isnt avaiable\n";
+        close(sockfd);
+        return false;
+    } else {
+        std::cout << "port is available" << std::endl;
+        close(sockfd);
+        return true;
+    }
+}
+
 bool Client::connect_to_server()
 {
-    // if (m_sock != 0) {
-    //     close(m_sock); // Закрыть предыдущее соединение
-    // }
-
-    // m_sock = socket(PF_INET, SOCK_STREAM, 0); // Создать новый сокет
-    // if (m_sock < 0) {
-    //     std::cout << "socket failure" << std::endl;
-    // }
-
-    // Установка нового порта в структуре адреса
-    // m_serv_addr.sin_port = htons(m_port);
-
     if (connect(m_sock, (struct sockaddr *)&m_serv_addr, sizeof(m_serv_addr)) < 0) {
         perror("connect");
-        return -1;
+        return false;
     }
     return true;
 }
 
-void Client::handle_events()
+void Client::handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change)
 {
+    int counter = 0;
     struct epoll_event events;
     char buffer[BUFFER_SIZE] = {0};
     int bytes_received = 0;
     int remaining_bytes = 0;
-    for(;;)
+    while(!atomic_bool)
     {
+        if(counter > 10)
+        {
+            exit(1);
+        }
         int num_events = epoll_wait(m_epollfd, &events, 1, -1);
         if(num_events == -1)
         {
@@ -114,6 +138,7 @@ void Client::handle_events()
             else if(bytes == 0)
             {
                 std::cout << "Server closed connection" << std::endl;
+                break;
             }
             else
             {
@@ -121,6 +146,7 @@ void Client::handle_events()
                 if(parse_message(std::string(buffer, bytes), port))
                 {
                     m_port = port;
+                    if_change = true;
                     epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_sock, nullptr);
                     close(m_epollfd);
                     close(m_sock);
@@ -137,17 +163,18 @@ void Client::handle_events()
         {
             std::cout << "else" << std::endl;
         }
+        counter++;
     } 
 }
 
-void Client::handle_write()
+void Client::handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change)
 {
-    for(;;)
+    while(!atomic_bool)
     {
         std::string line;
         std::getline(std::cin, line);
-        auto cline = line.c_str(); // Получаем указатель на строку
-        int len = strlen(cline); // Получаем длину строки
+        auto cline = line.c_str();
+        int len = strlen(cline);
         int tmp;
         if(parse_message(line, tmp))
         {
@@ -158,10 +185,10 @@ void Client::handle_write()
             {
                 std::cout << "line does not sent (handler_write)" << std::endl;
             }
+            is_change = true;
             break;
-            return;
         }
-        int bytes_sent = send(m_sock, cline, len, 0); // Отправляем данные
+        int bytes_sent = send(m_sock, cline, len, 0);
         if(bytes_sent < 0)
         {
             std::cout << "line does not sent (handler_write)" << std::endl;
@@ -202,21 +229,64 @@ bool Client::parse_message(std::string message, int& intPort)
     return false;
 }
 
+int Client::generate_random_port() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> distribution(1024, 65535);
+    return distribution(gen);
+}
+
+void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change)
+{
+    // std::atomic<bool> stop(false);
+    // std::future<void> f1 = std::async([cl]{cl->handle_events();});
+    // std::future<void> f2 = std::async([cl]{cl->handle_write();});
+    for(size_t i = 0; i < 45; ++i)
+    {
+        if(is_change)
+        {
+            std::cout << "HAS BEEN CHANGED" << std::endl;
+            return;
+        }
+        std::cout << is_change << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    std::cout << "tryin' to change port ... " << std::endl;
+    int port;
+    for(;;)
+    {
+        port = cl->generate_random_port();
+        if(cl->isPortAvailable(port)) { break;}
+    }
+    std::string message = "newport-" + std::to_string(port);
+    send(cl->m_sock, message.c_str(), strlen(message.c_str()), 0);
+    atomic_bool = true;  
+    // f1.get();
+    // f2.get();5t4rnugfdo
+}
+
 int main()
 {
     Client *cl = new Client(ADDR, PORT);
     for(;;)
     {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::atomic<bool> stop(false);
+        std::atomic<bool> is_change(false);
         cl->create_socket();
-        cl->bind();
+        cl->bind_to_server();
         if(!cl->connect_to_server())
         {
             break;
         }
-        std::future<void> f1 = std::async([cl]{cl->handle_events();});
-        std::future<void> f2 =  std::async([cl]{cl->handle_write();});
+        std::future<void> f1 = std::async([cl, &stop, &is_change]{cl->handle_events(stop, is_change);});
+        // std::future<void> f2 =  std::async([cl, &stop]{cl->handle_write(stop);});
+        std::thread thread_write([cl, &stop, &is_change]{cl->handle_write(stop, is_change);});
+        std::thread t1([cl, &stop, &is_change]{schedular(cl, stop, is_change);});
+        t1.detach();
         f1.get();
-        f2.get();
+        // f2.get();
+        thread_write.detach();
     }
 }
 
