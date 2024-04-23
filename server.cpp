@@ -246,16 +246,23 @@ void Server::handle_write(std::atomic<bool> &atomic_bool)
                 if(isPortAvailable(intPort))
                 {
                     m_port = intPort;
-                    std::cout << "cool" << std::endl;
+                    const char* cline = line.c_str(); // Получаем указатель на строку
+                    int len = strlen(cline);
+                    send(m_fd_map[M_CLIENT_SOCKET::FIRST], cline, len, 0);
+                    atomic_bool = true;
                 }
             }
-            const char* cline = line.c_str(); // Получаем указатель на строку
-            int len = strlen(cline); // Получаем длину строки
-            int bytes_sent = send(m_fd_map[M_CLIENT_SOCKET::FIRST], cline, len, 0); // Отправляем данные
-            if(bytes_sent < 0)
+            else
             {
-                std::cout << "line wasnt send (handler_write)" << std::endl;
+                const char* cline = line.c_str(); // Получаем указатель на строку
+                int len = strlen(cline); // Получаем длину строки
+                int bytes_sent = send(m_fd_map[M_CLIENT_SOCKET::FIRST], cline, len, 0); // Отправляем данные
+                if(bytes_sent < 0)
+                {
+                    std::cout << "line wasnt send (handler_write)" << std::endl;
+                }
             }
+            
             // Очищаем буфер после отправки данных
             line.clear();
         }
@@ -313,15 +320,15 @@ bool Server::parse_message(std::string message, int& intPort)
  * }
 */
 
-void schedular(Server *s)
-{
-    std::atomic<bool> stop(false);
-    int newPort = generate_random_port();
-    std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
-    std::this_thread::sleep_for(std::chrono::seconds(45));
-    s->set_new_port(newPort);
-    stop = true;
-}
+// void schedular(Server *s)
+// {
+//     std::atomic<bool> stop(false);
+//     int newPort = generate_random_port();
+//     std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
+//     std::this_thread::sleep_for(std::chrono::seconds(45));
+//     s->set_new_port(newPort);
+//     stop = true;
+// }
 
 int main()
 {
