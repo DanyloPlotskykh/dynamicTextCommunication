@@ -241,15 +241,14 @@ void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &is
     // std::atomic<bool> stop(false);
     // std::future<void> f1 = std::async([cl]{cl->handle_events();});
     // std::future<void> f2 = std::async([cl]{cl->handle_write();});
-    for(size_t i = 0; i < 45; ++i)
+    for(size_t i = 0; i < 4500; ++i)
     {
         if(is_change)
         {
             std::cout << "HAS BEEN CHANGED" << std::endl;
             return;
         }
-        std::cout << is_change << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     std::cout << "tryin' to change port ... " << std::endl;
     int port;
