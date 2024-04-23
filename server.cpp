@@ -13,22 +13,20 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <random>
 
 #define PORT 7302
 #define BUFFER_SIZE 1024
-#define MAX_EVENTS 5
-#define CLIENT_SOCKET 1
 
 class Server
 {
 public:
     Server(const int port, const int buffer_size);
+    void set_new_port(const int& port);
     void create_socket();
     void bind_to_port(); 
-
     int listen_client() const;
-
-    void handle_events();
+    void handle_events(std::atomic<bool> &atomic_bool);
 
 
 //for test
@@ -36,8 +34,9 @@ public:
 
 private:
     bool parse_message(std::string, int&);
-    void handle_write();
+    void handle_write(std::atomic<bool> &atomic_bool);
     void timer();
+    bool isPortAvailable(int port);
 
 private: 
     std::unordered_map<int, int> m_fd_map;
@@ -46,14 +45,38 @@ private:
     struct epoll_event m_event;
 
     enum M_CLIENT_SOCKET { FIRST = 0 };
-    std::atomic<bool> stop;
 };
 
 Server::Server(const int port, const int buffer_size) : m_port{port}, 
-                                                        m_buffer_size{buffer_size},
-                                                        stop{false}
+                                                        m_buffer_size{buffer_size}
+{    
+}
+
+bool Server::isPortAvailable(int port) {
+    int sockfd = socket(PF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        return false;
+    }
+
+    sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sockfd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) == -1) {
+        std::cerr << "Порт isnt avaiable\n";
+        close(sockfd);
+        return false;
+    } else {
+        std::cout << "port is available" << std::endl;
+        close(sockfd);
+        return true;
+    }
+}
+
+void Server::set_new_port(const int& port)
 {
-    
+    m_port = port;
 }
 
 void Server::create_socket()
@@ -73,7 +96,7 @@ void Server::create_socket()
         perror("epoll_create1");
     }
 
-    m_event.events = EPOLLIN; // Ожидаем входные данные на серверном сокете
+    m_event.events = EPOLLIN;
     m_event.data.fd = m_server_socket;
 }
 
@@ -90,13 +113,19 @@ void Server::bind_to_port()
     }
 }
 
+int generate_random_port() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> distribution(1024, 65535);
+    return distribution(gen);
+}
+
 int Server::get_port()
 {
     socklen_t len;
     int port;
     len = sizeof(m_address);
     getpeername(m_server_socket, (struct sockaddr*)&m_address, &len);
-    // работаем с обоими: IPv4 и IPv6:
     if (m_address.sin_family == AF_INET) {
         struct sockaddr_in *s = (struct sockaddr_in *)&m_address;
         port = ntohs(s->sin_port);
@@ -112,31 +141,26 @@ int Server::listen_client() const
 void Server::timer()
 {
     std::this_thread::sleep_for(std::chrono::seconds(45));
-    this->stop = true;
 }
 
-void Server::handle_events()
+void Server::handle_events(std::atomic<bool> &atomic_bool)
 {
     std::cout << "handle_events()" << std::endl;
     struct epoll_event events;
     char buffer[m_buffer_size];
-    //std::future<void> future = std::async(&Server::timer, this);
+    // std::future<void> future = std::async(&Server::timer, this);
     if (epoll_ctl(m_epollfd, EPOLL_CTL_ADD, m_server_socket, &m_event) == -1) {
         perror("epoll_ctl");
         return;
     }
-    for(;;) {
-        
-        std::cout << "in for - " << m_server_socket << std::endl;
-        int num_events = epoll_wait(m_epollfd, &events, 2, -1);
-
+    while(!atomic_bool) {
+        int num_events = epoll_wait(m_epollfd, &events, 1, -1);
+        std::cout << "epoll" << std::endl;
         if (num_events == -1) {
             perror("epoll_wait");
             return; 
         }
-        std::cout << "if(1)" << std::endl;
         if (events.data.fd == m_server_socket) {
-            // Событие на серверном сокете - новое соединение
             struct sockaddr_in client_address;
             std::cout << "in" << std::endl;
             socklen_t client_len = sizeof(client_address);
@@ -146,67 +170,91 @@ void Server::handle_events()
                 perror("accept");
             }
             std::cout << "New client connected" << std::endl;
-            // Добавляем новый сокет в epoll
+            // add new docket in epoll
             struct epoll_event event;
-            event.events = EPOLLIN; // Ожидаем чтение
+            event.events = EPOLLIN;
             event.data.fd = client_socket;
             if (epoll_ctl(m_epollfd, EPOLL_CTL_ADD, client_socket, &event) == -1) {
                 perror("epoll_ctl");
                 close(client_socket);
             }
-            std::thread t1([this]{handle_write();});
+            std::thread t1([this, &atomic_bool]{handle_write(atomic_bool);});
             t1.detach();
         }
         else 
         {
-            std::cout << "in2" << std::endl;
-            // Событие на клиентском сокете - данные готовы к чтению
             int client_socket = events.data.fd;
             ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
             int newPort;
+            // if (!future.valid()) {
+            //     std::cout << "change port ... " << std::endl;
+            //     m_fd_map[M_CLIENT_SOCKET::FIRST] = -1;
+            //     for(;;)
+            //     {
+            //         m_port = generate_random_port();
+            //         if(isPortAvailable(m_port)){ break; }
+            //     }
+            //     std::string new_port_message = "newport-" +  std::to_string(m_port); 
+            //     send(client_socket, new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
+            //     epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_server_socket, nullptr);
+            //     close(m_server_socket);
+            //     break;
+            // }
             if(parse_message(std::string(buffer, bytes_received), newPort))
             {
                 std::cout << "if into handle_events, parse_message = TRUE" << std::endl;
-                m_fd_map[M_CLIENT_SOCKET::FIRST] = -1;
-                m_port = newPort;
-                std::string new_port_message = "newport-" +  std::to_string(m_port); 
-                send(client_socket, new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
-                epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_server_socket, nullptr); // Удаляем серверный сокет из epoll
-                close(m_server_socket);
-                break; 
+                if(isPortAvailable(newPort))
+                {
+                    m_fd_map[M_CLIENT_SOCKET::FIRST] = -1;
+                    m_port = newPort;
+                    std::string new_port_message = "newport-" +  std::to_string(m_port); 
+                    send(client_socket, new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
+                    epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_server_socket, nullptr); // Удаляем серверный сокет из epoll
+                    close(m_server_socket);
+                    break;
+                }
+                else
+                {
+                    std::string new_port_message = "fail";
+                    send(client_socket, new_port_message.c_str(), strlen(new_port_message.c_str()), 0); 
+                }
+                 
             }
             if (bytes_received == -1) {
                 perror("recv");
             } else if (bytes_received == 0) {
-                // Соединение закрыто клиентом
                 std::cout << "Client disconnected" << std::endl;
                 close(client_socket);
             } else {
                 std::cout << "Received data from client: " << std::string(buffer, bytes_received) << std::endl;
             }
         }
-        
     }
 }
 
-void Server::handle_write()
+void Server::handle_write(std::atomic<bool> &atomic_bool)
 {
-    for(;;)
+    while(!atomic_bool)
     {   
         if (m_fd_map[M_CLIENT_SOCKET::FIRST] > 0)
         {   
             std::string line;
             std::getline(std::cin, line);
+            int intPort;
+            if(parse_message(line, intPort))
+            {
+                if(isPortAvailable(intPort))
+                {
+                    m_port = intPort;
+                    std::cout << "cool" << std::endl;
+                }
+            }
             const char* cline = line.c_str(); // Получаем указатель на строку
             int len = strlen(cline); // Получаем длину строки
             int bytes_sent = send(m_fd_map[M_CLIENT_SOCKET::FIRST], cline, len, 0); // Отправляем данные
             if(bytes_sent < 0)
             {
                 std::cout << "line wasnt send (handler_write)" << std::endl;
-            }
-            else
-            {
-                std::cout << "WAS SENDED" << std::endl;
             }
             // Очищаем буфер после отправки данных
             line.clear();
@@ -251,12 +299,37 @@ bool Server::parse_message(std::string message, int& intPort)
     return false;
 }
 
+/**
+ * void schedulr(s)
+ * {
+ *      std::atomic<bool> stop(false);
+ *      std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
+ *      std::sleep(45);
+ *      stop = true;
+ *      int port = getport();
+ *      s->setport(port);
+ *      
+        f1.get();
+ * }
+*/
+
+void schedular(Server *s)
+{
+    std::atomic<bool> stop(false);
+    int newPort = generate_random_port();
+    std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
+    std::this_thread::sleep_for(std::chrono::seconds(45));
+    s->set_new_port(newPort);
+    stop = true;
+}
+
 int main()
 {
     Server *s = new Server(PORT, BUFFER_SIZE);
     
     for(;;)
     {   
+        std::atomic<bool> stop(false);
         s->create_socket();
         s->bind_to_port();
         std::cout << "PORT -> " << s->get_port() << std::endl;
@@ -265,7 +338,8 @@ int main()
             std::cout << "xnj nj yt nj" << std::endl;
         }
         std::cout << "1" << std::endl;
-        std::future<void> f1 = std::async([s]{s->handle_events();});
+        std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
+        // schedular(s);
         f1.get();
     }      
 }
