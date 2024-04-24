@@ -1,45 +1,4 @@
-#include <iostream>
-#include <future>
-#include <unordered_map>
-#include <cstring>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <cctype>
-#include <string>
-#include <algorithm>
-#include <thread>
-#include <chrono>
-#include <atomic>
-#include <random>
-
-#define PORT 7302
-#define BUFFER_SIZE 1024
-
-class Server
-{
-public:
-    Server(const int port, const int buffer_size);
-    void create_socket();
-    void bind_to_port(); 
-    int listen_client() const;
-    void handle_events(std::atomic<bool> &atomic_bool);
-
-private:
-    bool parse_message(std::string, int&);
-    void handle_write(std::atomic<bool> &atomic_bool);
-    bool isPortAvailable(int port);
-
-private: 
-    std::unordered_map<int, int> m_fd_map;
-    int m_server_socket, m_port, m_buffer_size, m_epollfd;
-    struct sockaddr_in m_address;
-    struct epoll_event m_event;
-
-    enum M_CLIENT_SOCKET { FIRST = 0 };
-};
+#include "server.hpp"
 
 Server::Server(const int port, const int buffer_size) : m_port{port}, 
                                                         m_buffer_size{buffer_size}
@@ -258,24 +217,4 @@ bool Server::parse_message(std::string message, int& intPort)
         return (intPort > 1024 && intPort < 65535);
     }
     return false;
-}
-
-int main()
-{
-    Server *s = new Server(PORT, BUFFER_SIZE);
-    
-    for(;;)
-    {   
-        std::atomic<bool> stop(false);
-        s->create_socket();
-        s->bind_to_port();
-        if(s->listen_client() < 0)
-        {
-            std::cout << "xnj nj yt nj" << std::endl;
-        }
-        std::cout << "1" << std::endl;
-        std::future<void> f1 = std::async([s, &stop]{s->handle_events(stop);});
-        f1.get();
-    }      
-    delete s;
 }

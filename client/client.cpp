@@ -1,45 +1,4 @@
-#include <iostream>
-#include <future>
-#include <cstring>
-#include <string>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <cctype>
-#include <string>
-#include <algorithm>
-#include <thread>
-#include <random>
-
-std::string ADDR = "127.0.0.1";
-int PORT = 7302;
-#define BUFFER_SIZE 1024
-
-class Client
-{
-public:
-    Client(std::string addr, int port);
-    void create_socket();
-    void bind_to_server();
-    bool connect_to_server();
-    void handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
-    void handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change);
-
-    friend void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
-
-private:
-    
-    bool parse_message(std::string message, int& intPort);
-    bool isPortAvailable(int port);
-    int generate_random_port();
-private:
-    const std::string m_addr;
-    int m_port, m_epollfd, m_sock = 0;
-    struct sockaddr_in m_serv_addr;
-    struct epoll_event m_event;
-};
+#include "client.hpp"
 
 Client::Client(std::string addr, int port) : m_addr(std::move(addr)),
                                                m_port(std::move(port))
@@ -215,51 +174,4 @@ int Client::generate_random_port() {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> distribution(1024, 65535);
     return distribution(gen);
-}
-
-void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change)
-{
-    for(size_t i = 0; i < 4500; ++i)
-    {
-        if(is_change)
-        {
-            std::cout << "HAS BEEN CHANGED" << std::endl;
-            return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    std::cout << "tryin' to change port ... " << std::endl;
-    int port;
-    for(;;)
-    {
-        port = cl->generate_random_port();
-        if(cl->isPortAvailable(port)) { break;}
-    }
-    std::string message = "newport-" + std::to_string(port);
-    send(cl->m_sock, message.c_str(), strlen(message.c_str()), 0);
-    atomic_bool = true;  
-}
-
-int main()
-{
-    Client *cl = new Client(ADDR, PORT);
-    for(;;)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::atomic<bool> stop(false);
-        std::atomic<bool> is_change(false);
-        cl->create_socket();
-        cl->bind_to_server();
-        if(!cl->connect_to_server())
-        {
-            break;
-        }
-        std::future<void> f1 = std::async([cl, &stop, &is_change]{cl->handle_events(stop, is_change);});
-        std::thread thread_write([cl, &stop, &is_change]{cl->handle_write(stop, is_change);});
-        std::thread t1([cl, &stop, &is_change]{schedular(cl, stop, is_change);});
-        f1.get();
-        thread_write.detach();
-        t1.detach();
-    }
-    delete cl;
 }

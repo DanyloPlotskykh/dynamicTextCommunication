@@ -3,7 +3,7 @@ CFLAGS := -Wall -Wextra -std=c++17
 SRCDIR := client
 BUILDDIR := ../build
 
-SRCS := client.cpp
+SRCS := client.cpp main.cpp
 OBJS := $(SRCS:$(SRCDIR)/%.cpp=$(BUILDDIR)/%.o)
 TARGET := client
 
