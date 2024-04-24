@@ -1,24 +1,17 @@
-# Объявление переменных
-CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17
+CC := g++
+CFLAGS := -Wall -Wextra -std=c++17
+SRCDIR := client
+BUILDDIR := ../build
 
-# Список исходных файлов
-SRCS = client.cpp
+SRCS := client.cpp
+OBJS := $(SRCS:$(SRCDIR)/%.cpp=$(BUILDDIR)/%.o)
+TARGET := client
 
-# Генерация имен объектных файлов на основе исходных файлов
-OBJS = $(SRCS:.cpp=.o)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $(BUILDDIR)/$@
 
-# Имя исполняемого файла
-EXEC = myprogram
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Правило для сборки исполняемого файла
-$(EXEC): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $(EXEC)
-
-# Правило для компиляции исходных файлов в объектные файлы
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# Чистка (удаление объектных файлов и исполняемого файла)
 clean:
-	rm -f $(OBJS) $(EXEC)
+	rm -rf $(BUILDDIR)/*.o $(BUILDDIR)/$(TARGET)
