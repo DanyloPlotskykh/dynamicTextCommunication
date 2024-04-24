@@ -25,11 +25,11 @@ public:
     void create_socket();
     void bind_to_port(); 
     int listen_client() const;
-    void handle_events(std::atomic<bool> &atomic_bool);
+    void handle_events(std::atomic<bool> &stop);
 
 private:
     bool parse_message(std::string, int&);
-    void handle_write(std::atomic<bool> &atomic_bool);
+    void handle_write(std::atomic<bool> &stop);
     bool isPortAvailable(int port);
 
 private: 

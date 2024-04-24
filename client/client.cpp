@@ -66,13 +66,13 @@ bool Client::connect_to_server()
     return true;
 }
 
-void Client::handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change)
+void Client::handle_events(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed)
 {
     struct epoll_event events;
     char buffer[BUFFER_SIZE] = {0};
     int bytes_received = 0;
     int remaining_bytes = 0;
-    while(!atomic_bool)
+    while(!stop)
     {
         int num_events = epoll_wait(m_epollfd, &events, 1, -1);
         if(num_events == -1)
@@ -97,7 +97,7 @@ void Client::handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if
                 if(parse_message(std::string(buffer, bytes), port))
                 {
                     m_port = port;
-                    if_change = true;
+                    port_is_changed = true;
                     epoll_ctl(m_epollfd, EPOLL_CTL_DEL, m_sock, nullptr);
                     close(m_epollfd);
                     close(m_sock);
@@ -113,9 +113,9 @@ void Client::handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if
     } 
 }
 
-void Client::handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change)
+void Client::handle_write(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed)
 {
-    while(!atomic_bool)
+    while(!stop)
     {
         std::string line;
         std::getline(std::cin, line);
@@ -130,7 +130,7 @@ void Client::handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_
             {
                 std::cout << "line does not sent (handler_write)" << std::endl;
             }
-            is_change = true;
+            port_is_changed = true;
             break;
         }
         int bytes_sent = send(m_sock, cline, len, 0);

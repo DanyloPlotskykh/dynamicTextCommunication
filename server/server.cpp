@@ -72,7 +72,7 @@ int Server::listen_client() const
    return listen(m_server_socket, 3); 
 }
 
-void Server::handle_events(std::atomic<bool> &atomic_bool)
+void Server::handle_events(std::atomic<bool> &stop)
 {
     std::cout << "handle_events()" << std::endl;
     struct epoll_event events;
@@ -81,7 +81,7 @@ void Server::handle_events(std::atomic<bool> &atomic_bool)
         perror("epoll_ctl");
         return;
     }
-    while(!atomic_bool) {
+    while(!stop) {
         int num_events = epoll_wait(m_epollfd, &events, 1, -1);
         std::cout << "epoll" << std::endl;
         if (num_events == -1) {
@@ -106,7 +106,7 @@ void Server::handle_events(std::atomic<bool> &atomic_bool)
                 perror("epoll_ctl");
                 close(client_socket);
             }
-            std::thread t1([this, &atomic_bool]{handle_write(atomic_bool);});
+            std::thread t1([this, &stop]{handle_write(stop);});
             t1.detach();
         }
         else 
@@ -146,9 +146,9 @@ void Server::handle_events(std::atomic<bool> &atomic_bool)
     }
 }
 
-void Server::handle_write(std::atomic<bool> &atomic_bool)
+void Server::handle_write(std::atomic<bool> &stop)
 {
-    while(!atomic_bool)
+    while(!stop)
     {   
         if (m_fd_map[M_CLIENT_SOCKET::FIRST] > 0)
         {   
@@ -163,7 +163,7 @@ void Server::handle_write(std::atomic<bool> &atomic_bool)
                     const char* cline = line.c_str(); // Получаем указатель на строку
                     int len = strlen(cline);
                     send(m_fd_map[M_CLIENT_SOCKET::FIRST], cline, len, 0);
-                    atomic_bool = true;
+                    stop = true;
                 }
             }
             else

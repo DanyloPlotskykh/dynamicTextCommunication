@@ -23,10 +23,10 @@ public:
     void create_socket();
     void bind_to_server();
     bool connect_to_server();
-    void handle_events(std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
-    void handle_write(std::atomic<bool> &atomic_bool, std::atomic<bool> &is_change);
+    void handle_events(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed);
+    void handle_write(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed);
 
-    friend void schedular(Client *cl, std::atomic<bool> &atomic_bool, std::atomic<bool> &if_change);
+    friend void schedular(Client *cl, std::atomic<bool> &stop, std::atomic<bool> &port_is_changed);
 
 private:
     
