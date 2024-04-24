@@ -1,4 +1,2 @@
-server/myprogram
-server/server.o
-client/client.o
-client/myprogram
+build
+.vscode
