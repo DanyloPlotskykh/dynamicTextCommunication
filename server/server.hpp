@@ -22,6 +22,10 @@ class Server
 {
 public:
     Server(const int port, const int buffer_size);
+
+    Server(const Server&) = delete;
+    Server& operator=(const Server&) = delete;
+
     void create_socket();
     void bind_to_port(); 
     int listen_client() const;
@@ -33,7 +37,7 @@ private:
     bool isPortAvailable(int port);
 
 private: 
-    std::unordered_map<int, int> m_fd_map;
+    std::unordered_map<int, int> m_fd_map; // Why it is used?
     int m_server_socket, m_port, m_buffer_size, m_epollfd;
     struct sockaddr_in m_address;
     struct epoll_event m_event;

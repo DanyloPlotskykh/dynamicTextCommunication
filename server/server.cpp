@@ -5,7 +5,7 @@ Server::Server(const int port, const int buffer_size) : m_port{port},
 {    
 }
 
-bool Server::isPortAvailable(int port) {
+bool Server::isPortAvailable(int port) { // Copy pasted from client
     int sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
         return false;
@@ -17,7 +17,7 @@ bool Server::isPortAvailable(int port) {
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(sockfd, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) == -1) {
-        std::cerr << "Порт isnt avaiable\n";
+        std::cerr << "Порт isnt avaiable\n"; // Я don't understand
         close(sockfd);
         return false;
     } else {
@@ -60,7 +60,8 @@ void Server::bind_to_port()
     }
 }
 
-int generate_random_port() {
+// Server should request automatic port change
+int generate_random_port() { // Not used
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> distribution(1024, 65535);

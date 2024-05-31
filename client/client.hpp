@@ -1,4 +1,5 @@
 #pragma once
+// Reduce number of headers in *.h *.hpp
 #include <iostream>
 #include <future>
 #include <cstring>
@@ -16,13 +17,18 @@
 
 #define BUFFER_SIZE 1024
 
+// PIMPL
+
+// There is no synchronization of m_sock, m_port, etc
+// We need to be sure user of this client can't break our class
+// Client shouldn't be copyable.
 class Client
 {
 public:
     Client(std::string addr, int port);
     void create_socket();
     void bind_to_server();
-    bool connect_to_server();
+    bool connect_to_server(); // I would like to have only this function in client as a public API
     void handle_events(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed);
     void handle_write(std::atomic<bool> &stop, std::atomic<bool> &port_is_changed);
 
